@@ -1,0 +1,50 @@
+    <!-- Begin page content -->
+    <div class="container">
+      <div class="page-header">
+        <h1>DevOps Test App for Integritas - CRUD App </h1>
+      </div>
+
+      <div class="row">
+        <div class="col-xs-6"><p class="lead">Type one name and click on Add</p></div>
+        <div class="col-xs-6"><a href="/">Click here</a> to go back</div>
+      </div>
+
+      <form action="/names" method="post" class="form-inline">
+        <div class="form-group">
+           <input type="text" name="name[name]" class="form-control">
+         </div>
+      <button type="Submit" class="btn btn-default">Add</button>
+      </form>
+
+</br>
+
+<table class="table">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Name</th>
+      <th>Creation Date</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{#each names }}
+    <tr>
+      <th scope="row">{{id}}</th>
+      <td>{{name}}</td>
+      <td>{{createdAt}}</td>
+      <td><a type="button" href="/names/{{id}}/destroy" class="btn btn-danger">Remove</a></td>
+    </tr>
+    {{/each}} 
+  </tbody>
+</table>
+
+{{!--       <ul>
+      {{#each names }}
+      <li>{{name}}</li>
+      {{/each}}    
+      </ul>
+ --}}
+
+    </div>
+    </div>  
