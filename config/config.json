@@ -1,9 +1,9 @@
 {
   "development": {
-    "username": "gab",
-    "password": "gab1234",
-    "database": "gabdb",
-    "host": "127.0.0.1",
+    "username": "$MYSQL_USER",
+    "password": "$MYSQL_PASSWORD",
+    "database": "$GABNODEAPP_DB_HOST",
+    "host": "$APP_DB_HOST",
     "dialect": "mysql"
   },
   "test": {
