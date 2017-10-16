@@ -1,0 +1,237 @@
+    <!-- Begin page content -->
+    <div class="container">
+
+        <h3>This is how the application was deployed using kubernates on aws.<a style="float: right" href="/">back</a></h3>
+
+
+
+     <p>The github repository of the simple application I developed.</p>
+      <div class="well"><a href="https://github.com/gabrielpasv/gab-node-app" target="_blank">https://github.com/gabrielpasv/gab-node-app</a></div>
+
+
+      <p>I created a docker image and uploaded it to docker hub. I used to following Dockerfile:</p>
+
+      <div class="well">FROM node:boron <br>
+# Create app directory <br>
+WORKDIR /gab-node-app <br>
+# Clone repo <br>
+RUN git clone https://github.com/gabrielpasv/gab-node-app.git . <br>
+# Install Dependencies  <br>
+RUN npm install <br>
+EXPOSE 80 <br>
+CMD [ "npm", "start" ] <br>
+</div>
+
+
+      <p>To build the image and upload it to docker hub I used these commands:</p>
+
+      <div class="well">docker build -t gabrielpasv/gab-node-app .<br>
+docker push gabrielpasv/gab-node-app
+</div>
+
+
+
+      <p>Setting up the environment installing <strong>kops, kubectl, awscli</strong>. And generate keys with <strong>ssh-keygen</strong>.</p>
+
+      <p>Create a DNS domain name on aws: <strong> k8s.gabrielpasv.net</strong></p>
+      <div class="well">aws route53 create-hosted-zone --name k8s.gabrielpasv.net --caller-reference 5</div>
+
+
+      <p>Create the aws cluster with kops</p>
+      <div class="well">kops create cluster --name=k8s.gabrielpasv.net --state=s3://k8s-gabrielpasv-state --zones=us-east-1a --node-count=2 --node-size=t2.micro --master-size=t2.micro --dns-zone=k8s.gabrielpasv.net</div>
+
+      <p>I Validate the cluster is ready</p>
+      <div class="well">ubuntu@ip-172-31-17-121:~$ kops validate cluster --state=s3://k8s-gabrielpasv-state  <br>
+Using cluster from kubectl context: k8s.gabrielpasv.net <br>
+ <br>
+Validating cluster k8s.gabrielpasv.net <br>
+ <br>
+INSTANCE GROUPS <br>
+NAME                    ROLE    MACHINETYPE     MIN     MAX     SUBNETS <br>
+master-us-east-1a       Master  t2.micro        1       1       us-east-1a <br>
+nodes                   Node    t2.micro        2       2       us-east-1a <br>
+ <br>
+NODE STATUS <br>
+NAME                            ROLE    READY <br>
+ip-172-20-34-7.ec2.internal     master  True <br>
+ip-172-20-35-253.ec2.internal   node    True <br>
+ip-172-20-38-120.ec2.internal   node    True <br>
+ <br>
+Your cluster k8s.gabrielpasv.net is ready <br>
+</div>
+
+
+    <p>I created the deployment with 1 replica for the mysql and 2 for the application with load balance and I also used secrets to pass the credentials. I used these files <strong>storage.yml, pv-claim.yml, gabnodeapp-secrets.yml, gabnodeapp-db.yml, gabnodeapp-db-service.yml, gabnodeapp-web.yml, gabnodeapp-web-service.yml
+</strong> </p>
+
+
+    <p>Check the content of each file</p>
+    <p> <strong>storage.yml</strong> </p>
+    <div class="well">kind: StorageClass <br>
+apiVersion: storage.k8s.io/v1 <br>
+metadata: <br>
+&nbsp  name: standard <br>
+provisioner: kubernetes.io/aws-ebs <br>
+parameters: <br>
+&nbsp  type: gp2 <br>
+&nbsp  zone: us-east-1a <br>
+</div>
+
+
+<p> <strong>pv-claim.yml</strong> </p>
+<div class="well">kind: PersistentVolumeClaim <br>
+apiVersion: v1 <br>
+metadata: <br>
+&nbsp  name: db-storage <br>
+&nbsp  annotations: <br>
+&nbsp  volume.beta.kubernetes.io/storage-class: "standard" <br>
+spec: <br>
+&nbsp  accessModes: <br>
+&nbsp  - ReadWriteOnce <br>
+&nbsp  resources: <br>
+&nbsp  requests: <br>
+&nbsp &nbsp    storage: 8Gi</div> <br>
+
+<p> <strong>gabnodeapp-secrets.yml</strong> </p>
+<div class="well">apiVersion: v1 <br>
+kind: Secret <br>
+metadata: <br>
+&nbsp  name: gabnodeapp-secrets <br>
+type: Opaque <br>
+data: <br>
+&nbsp  gab-password: Z2FiMTIzNA== <br>
+&nbsp  root-password: cG9ydGFsMTIzNA== <br>
+</div>
+
+<p> <strong>gabnodeapp-db.yml</strong> </p>
+<div class="well">apiVersion: v1 <br>
+kind: ReplicationController <br>
+metadata: <br>
+&nbsp  name: gabnodeapp-db <br>
+spec: <br>
+&nbsp  replicas: 1 <br>
+&nbsp  selector: <br>
+&nbsp &nbsp   app: gabnodeapp-db <br>
+&nbsp  template: <br>
+&nbsp &nbsp    metadata: <br>
+&nbsp &nbsp &nbsp      name: gabnodeapp-db <br>
+&nbsp &nbsp &nbsp      labels: <br>
+&nbsp &nbsp &nbsp &nbsp        app: gabnodeapp-db <br>
+&nbsp &nbsp    spec: <br>
+&nbsp &nbsp &nbsp      containers: <br>
+&nbsp &nbsp &nbsp &nbsp      - name: mysql <br>
+&nbsp &nbsp &nbsp &nbsp        image: mysql:5.7 <br>
+&nbsp &nbsp &nbsp &nbsp        args: <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp          - "--ignore-db-dir=lost+found" <br>
+&nbsp &nbsp&nbsp &nbsp        ports: <br>
+&nbsp &nbsp &nbsp &nbsp        - name: mysql-port <br>
+&nbsp &nbsp&nbsp &nbsp &nbsp          containerPort: 3306 <br>
+&nbsp &nbsp&nbsp &nbsp        env: <br>
+&nbsp &nbsp&nbsp &nbsp &nbsp          - name: MYSQL_ROOT_PASSWORD <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp &nbsp            valueFrom: <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp              secretKeyRef: <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp&nbsp                name: gabnodeapp-secrets <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp                key: root-password   <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp          - name: MYSQL_DATABASE <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp &nbsp            value: gabdb <br>
+&nbsp &nbsp&nbsp &nbsp &nbsp          - name: MYSQL_USER <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp &nbsp            value: gab <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp          - name: MYSQL_PASSWORD <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp &nbsp            valueFrom: <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp              secretKeyRef: <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp                name: gabnodeapp-secrets <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp &nbsp                key: gab-password         <br> 
+&nbsp &nbsp&nbsp &nbsp        volumeMounts: <br>
+&nbsp &nbsp &nbsp &nbsp        - mountPath: "/var/lib/mysql" <br>
+&nbsp &nbsp&nbsp&nbsp &nbsp          name: gabnodeapp-storage <br>
+&nbsp &nbsp&nbsp      volumes: <br>
+&nbsp &nbsp &nbsp &nbsp        - name: gabnodeapp-storage <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp          persistentVolumeClaim: <br>
+&nbsp &nbsp &nbsp &nbsp &nbsp &nbsp            claimName: db-storage <br>
+</div>
+
+<p> <strong>gabnodeapp-db-service.yml</strong> </p>
+<div class="well">apiVersion: v1<br>
+kind: Service<br>
+metadata:<br>
+&nbsp  name: gabnodeapp-db<br>
+spec:<br>
+&nbsp  ports:<br>
+&nbsp  - port: 3306<br>
+&nbsp &nbsp    protocol: TCP<br>
+&nbsp  selector:<br>
+&nbsp&nbsp    app: gabnodeapp-db <br>
+  type: NodePort<br>
+</div>
+
+<p> <strong>gabnodeapp-web.yml</strong> </p>
+<div class="well">apiVersion: extensions/v1beta1 <br>
+kind: Deployment <br>
+metadata: <br>
+&nbsp  name: gabnodeapp-deployment <br>
+spec: <br>
+&nbsp  replicas: 2 <br>
+&nbsp  template: <br>
+&nbsp &nbsp    metadata: <br>
+&nbsp&nbsp&nbsp      labels: <br>
+&nbsp&nbsp&nbsp&nbsp        app: gabnodeapp <br>
+&nbsp&nbsp    spec: <br>
+&nbsp&nbsp&nbsp      containers: <br>
+&nbsp&nbsp&nbsp      - name: gab-node-app <br>
+&nbsp&nbsp&nbsp&nbsp        image: gabrielpasv/gab-node-app <br>
+&nbsp&nbsp&nbsp&nbsp        ports: <br>
+&nbsp&nbsp&nbsp&nbsp        - name: http-port <br>
+&nbsp&nbsp&nbsp&nbsp&nbsp          containerPort: 80 <br>
+&nbsp&nbsp&nbsp&nbsp        env: <br>
+&nbsp&nbsp&nbsp&nbsp        - name: MYSQL_USER <br>
+&nbsp&nbsp&nbsp&nbsp          value: gab <br>
+&nbsp&nbsp&nbsp&nbsp        - name: MYSQL_PASSWORD <br>
+&nbsp&nbsp&nbsp&nbsp          value: gab1234        <br>   
+&nbsp&nbsp&nbsp&nbsp        - name: MYSQL_DATABASE <br>
+&nbsp&nbsp&nbsp&nbsp          value: gabdb <br>
+&nbsp&nbsp&nbsp&nbsp        - name: APP_DB_HOST <br>
+&nbsp&nbsp&nbsp&nbsp          value: gabnodeapp-db</div>
+
+<p> <strong>gabnodeapp-web-service.yml</strong> </p>
+<div class="well">apiVersion: v1 <br>
+kind: Service <br>
+metadata: <br>
+&nbsp  name: gabnodeapp <br>
+spec: <br>
+&nbsp  ports: <br>
+&nbsp  - port: 80 <br>
+&nbsp&nbsp    targetPort: http-port <br>
+&nbsp&nbsp    protocol: TCP <br>
+&nbsp  selector: <br>
+&nbsp&nbsp    app: gabnodeapp <br>
+&nbsp  type: LoadBalancer</div>
+
+
+
+  <p>Check running pods</p>
+  <div class="well">ubuntu@ip-172-31-17-121:~$ kubectl get pods <br>
+NAME                                     READY     STATUS    RESTARTS   AGE <br>
+gabnodeapp-db-q97j4                      1/1       Running   0          7h <br>
+gabnodeapp-deployment-1899699146-4g37c   1/1       Running   0          5h <br>
+gabnodeapp-deployment-1899699146-dtxz1   1/1       Running   0          5h <br>
+</div>
+
+
+  <p>Check deployment</p>
+  <div class="well">ubuntu@ip-172-31-17-121:~$ kubectl get deployments<br>
+NAME                    DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE<br>
+gabnodeapp-deployment  &nbsp&nbsp 2   &nbsp&nbsp      2   &nbsp&nbsp      2    &nbsp&nbsp        2   &nbsp&nbsp       5h<br>
+</div>
+
+
+<p>It generates a ELB link</p>
+<div class="well">ac7b01a9fb1f311e798aa021c568ee01-417161783.us-east-1.elb.amazonaws.com</div>
+
+<p>And I created a domain for that</p>
+<div class="well"> <a href="http://gab-node-app.k8s.gabrielpasv.net/">http://gab-node-app.k8s.gabrielpasv.net/</a> </div>
+
+
+
+
+    </div>
+    </div>
