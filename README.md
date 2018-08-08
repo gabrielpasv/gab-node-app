@@ -1,2 +1,2 @@
 # gab-node-app
-simple node crud with sequelize
+simple node crud with nodejs + sequelize
